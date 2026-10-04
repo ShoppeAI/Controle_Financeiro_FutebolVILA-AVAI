@@ -90,6 +90,7 @@ nav button.on{color:var(--ac)}
 <nav>
   <button data-t="resumo"><b>📊</b>Resumo</button>
   <button data-t="pagar"><b>💰</b>Pagamentos</button>
+  <button data-t="desp"><b>🧾</b>Despesas</button>
   <button data-t="atletas"><b>👥</b>Atletas</button>
   <button data-t="mais"><b>⚙️</b>Mais</button>
 </nav>
@@ -144,7 +145,7 @@ function render(){
   document.getElementById("mes").textContent = mes;
   document.querySelectorAll("nav button").forEach(function(b){ b.classList.toggle("on", b.dataset.t===tab); });
   var m=document.getElementById("main");
-  m.innerHTML = tab==="resumo"?vResumo(): tab==="pagar"?vPagar(): tab==="atletas"?vAtletas(): vMais();
+  m.innerHTML = tab==="resumo"?vResumo(): tab==="pagar"?vPagar(): tab==="desp"?vDesp(): tab==="atletas"?vAtletas(): vMais();
 }
 document.querySelectorAll("nav button").forEach(function(b){ b.onclick=function(){ tab=b.dataset.t; render(); window.scrollTo(0,0); }; });
 
@@ -155,6 +156,7 @@ function vResumo(){
    '<div class="kpi"><small>Arrecadado</small><div class="ok">'+brl(s.total)+'</div></div>'+
    '<div class="kpi"><small>Pagaram</small><div class="ok">'+s.pg.length+'</div></div>'+
    '<div class="kpi"><small>Devem</small><div class="bad">'+s.dv.length+'</div></div></div>';
+  h+=caixaCard();
   h+='<div class="card"><h3>Status dos atletas</h3>'+
    '<div>Pagaram <b>'+pp+'%</b></div><div class="bar"><i style="width:'+pp+'%;background:var(--ok)"></i></div>'+
    '<div>Devem <b>'+pd+'%</b></div><div class="bar"><i style="width:'+pd+'%;background:var(--bad)"></i></div></div>';
@@ -199,7 +201,7 @@ function vMais(){
   return '<div class="card"><h3>Exportar dados</h3><div style="color:var(--mut);font-size:14px">Gere uma planilha Excel com o cadastro de atletas, os pagamentos e o resumo do mês. Você escolhe o que incluir.</div>'+
    '<div class="btns"><button class="btn sec" onclick="exportSheet()">📤 Exportar planilha</button></div></div>'+
    '<div class="card"><h3>Mês de '+mes+'</h3><div class="btns" style="margin-top:0"><button class="btn dng" onclick="resetMes()">Resetar pagamentos do mês</button></div></div>'+
-   '<div class="card"><h3>Base de atletas</h3><div style="color:var(--mut);font-size:14px">Volta a lista para a base do time e apaga as alterações e os pagamentos deste aparelho.</div><div style="color:var(--mut);font-size:14px;margin:6px 0 0">'+(S.baseAt?'Base com '+S.baseN+' atletas, atualizada em '+S.baseAt+'. ':'Base embutida no app. ')+'O que você incluir ou alterar fica salvo e soma à base.</div><div class="btns"><button class="btn" onclick="syncBase(true)">🔄 Atualizar base agora</button><button class="btn sec" onclick="restauraBase()">Restaurar base inicial</button></div></div><div class="card"><h3>Dados neste aparelho</h3><div style="color:var(--mut);font-size:14px">Tudo fica salvo no seu navegador. Exporte de vez em quando para ter cópia de segurança.</div></div>';
+   '<div class="card"><h3>Base de atletas</h3><div style="color:var(--mut);font-size:14px">Volta a lista para a base do time e apaga as alterações, os pagamentos, as despesas e o saldo inicial deste aparelho.</div><div style="color:var(--mut);font-size:14px;margin:6px 0 0">'+(S.baseAt?'Base com '+S.baseN+' atletas, atualizada em '+S.baseAt+'. ':'Base embutida no app. ')+'O que você incluir ou alterar fica salvo e soma à base.</div><div class="btns"><button class="btn" onclick="syncBase(true)">🔄 Atualizar base agora</button><button class="btn sec" onclick="restauraBase()">Restaurar base inicial</button></div></div><div class="card"><h3>Dados neste aparelho</h3><div style="color:var(--mut);font-size:14px">Tudo fica salvo no seu navegador. Exporte de vez em quando para ter cópia de segurança.</div></div>';
 }
 
 // ---- ações ------------------------------------------------------------
@@ -226,10 +228,67 @@ var _cb=null;
 function confirmar(msg,cb,label){ _cb=cb; openSheet('<h2>Confirmar</h2><div style="margin:8px 0 4px">'+esc(msg)+'</div><div class="btns"><button class="btn dng" style="flex:1" onclick="var f=_cb;closeSheet();if(f)f()">'+(label||"Confirmar")+'</button><button class="btn sec" onclick="closeSheet()">Cancelar</button></div>'); }
 function delPag(i){ confirmar("Excluir este lançamento?",function(){ S.pags.splice(i,1); save(); render(); },"Excluir"); }
 function restauraBase(){
-  confirmar("Restaurar a base inicial? Os atletas e pagamentos atuais deste aparelho serão apagados.",function(){
-    S.atletas=SEED.a.map(function(a){return {n:a.n,i:a.i,p:a.p,r:a.r,w:"",c:a.c,b:1}}); S.removed=[]; S.edited={}; S.pags=[]; S.cob={}; save(); render(); toast("Base inicial restaurada"); syncBase(false);
+  confirmar("Restaurar a base inicial? Os atletas, pagamentos, despesas e saldo inicial atuais deste aparelho serão apagados.",function(){
+    S.atletas=SEED.a.map(function(a){return {n:a.n,i:a.i,p:a.p,r:a.r,w:"",c:a.c,b:1}}); S.removed=[]; S.edited={}; S.pags=[]; S.desp=[]; S.ini=0; S.cob={}; save(); render(); toast("Base inicial restaurada"); syncBase(false);
   },"Restaurar");
 }
+
+// ---- despesas / caixa -------------------------------------------------
+var CATS=["Arbitragem","Material esportivo","Campo/Quadra","Uniforme","Água/Lanche","Outros"];
+function mk(m){ var p=String(m).split("/"); return (+p[1])*100+(+p[0]); }
+function brlS(v){ return (v<0?"− ":"")+brl(Math.abs(v)); }
+function soma(arr){ var t=0; arr.forEach(function(x){ t+=Number(x.v||0); }); return t; }
+function totEnt(m){ return soma(S.pags.filter(function(p){return p.m===m})); }
+function totDesp(m){ return soma(S.desp.filter(function(p){return p.m===m})); }
+function saldoAcum(){
+  var lim=mk(mes);
+  return (Number(S.ini)||0)+soma(S.pags.filter(function(p){return mk(p.m)<=lim})) - soma(S.desp.filter(function(p){return mk(p.m)<=lim}));
+}
+function linhaV(l,v,c,b){ return '<div style="display:flex;justify-content:space-between;padding:6px 0'+(b?';border-top:1px solid var(--bd);margin-top:4px;padding-top:10px':'')+'"><span>'+l+'</span><b class="'+c+'">'+brlS(v)+'</b></div>'; }
+function caixaCard(){
+  var e=totEnt(mes), d=totDesp(mes), sm=e-d, sa=saldoAcum();
+  return '<div class="card"><h3>Caixa de '+mes+'</h3>'+linhaV("Arrecadado",e,"ok")+linhaV("Despesas",-d,d>0?"bad":"")+linhaV("Saldo do mês",sm,sm>=0?"ok":"bad")+(S.ini?linhaV("Saldo inicial (antes do app)",S.ini,S.ini>=0?"ok":"bad"):"")+linhaV("Saldo acumulado",sa,sa>=0?"ok":"bad",true)+'</div>';
+}
+function vDesp(){
+  var d=totDesp(mes), sa=saldoAcum();
+  var h='<div class="grid"><div class="kpi"><small>Despesas do mês</small><div class="bad">'+brl(d)+'</div></div><div class="kpi"><small>Saldo acumulado</small><div class="'+(sa>=0?'ok':'bad')+'">'+brlS(sa)+'</div></div></div>';
+  h+='<div class="btns"><button class="btn" style="flex:1" onclick="despSheet()">+ Lançar despesa</button><button class="btn sec" onclick="iniSheet()">Saldo inicial: '+brlS(Number(S.ini)||0)+'</button></div>';
+  var cat={}; S.desp.forEach(function(x){ if(x.m===mes) cat[x.c]=(cat[x.c]||0)+Number(x.v||0); });
+  var ks=Object.keys(cat);
+  if(ks.length){ h+='<div class="card"><h3>Por categoria</h3>'; ks.forEach(function(k){ h+='<div style="display:flex;justify-content:space-between;padding:4px 0"><span>'+esc(k)+'</span><b>'+brl(cat[k])+'</b></div>'; }); h+='</div>'; }
+  h+='<div class="card"><h3>Despesas de '+mes+'</h3>';
+  var n=0;
+  S.desp.forEach(function(x,i){ if(x.m!==mes) return; n++;
+    h+='<div class="row"><div class="n">'+esc(x.t)+'<span>'+esc(x.d)+' • '+esc(x.c)+'</span></div><b class="bad">'+brl(x.v)+'</b><button class="btn sm sec" onclick="delDesp('+i+')">🗑</button></div>'; });
+  if(!n) h+='<div class="empty">Nenhuma despesa neste mês</div>';
+  return h+'</div>';
+}
+
+function iniSheet(){
+  openSheet('<h2>Saldo inicial</h2><div style="color:var(--mut);font-size:14px">Quanto já havia em caixa antes de você começar a lançar no app. Entra no saldo acumulado de todos os meses. Deixe 0 para limpar.</div>'+
+   '<label>Valor (R$)</label><input id="si" type="number" inputmode="decimal" step="0.01" value="'+esc(S.ini||"")+'" placeholder="0,00">'+
+   '<div class="btns"><button class="btn" style="flex:1" onclick="salvaIni()">Salvar</button><button class="btn sec" onclick="closeSheet()">Cancelar</button></div>');
+}
+function salvaIni(){
+  var v=parseFloat(String(document.getElementById("si").value).replace(",","."));
+  S.ini=isNaN(v)?0:v; save(); closeSheet(); render(); toast("Saldo inicial salvo");
+}
+function despSheet(){
+  openSheet('<h2>Lançar despesa</h2><div style="color:var(--mut)">Mês '+mes+' • abate do saldo</div>'+
+   '<label>Descrição</label><input id="dt" placeholder="Ex.: Arbitragem do jogo">'+
+   '<label>Valor (R$)</label><input id="dv" type="number" inputmode="decimal" step="0.01" placeholder="0,00">'+
+   '<label>Categoria</label><select id="dc">'+CATS.map(function(c){return '<option>'+esc(c)+'</option>'}).join("")+'</select>'+
+   '<label>Data</label><input id="dd" value="'+hoje()+'">'+
+   '<div class="btns"><button class="btn" style="flex:1" onclick="salvaDesp()">Salvar</button><button class="btn sec" onclick="closeSheet()">Cancelar</button></div>');
+}
+function salvaDesp(){
+  var t=document.getElementById("dt").value.trim(), v=parseFloat(String(document.getElementById("dv").value).replace(",","."));
+  if(!t){ toast("Informe a descrição"); return; }
+  if(!(v>0)){ toast("Informe um valor válido"); return; }
+  S.desp.push({t:t,v:v,c:document.getElementById("dc").value,d:document.getElementById("dd").value.trim()||hoje(),m:mes});
+  save(); closeSheet(); render(); toast("Despesa lançada");
+}
+function delDesp(i){ confirmar("Excluir esta despesa?",function(){ S.desp.splice(i,1); save(); render(); },"Excluir"); }
 function resetMes(){
   var m=mes;
   confirmar("Apagar TODOS os pagamentos de "+m+"? Esta ação não pode ser desfeita.",function(){
@@ -333,15 +392,16 @@ function exportSheet(){
   openSheet('<h2>Exportar planilha</h2><div style="color:var(--mut);font-size:14px">Escolha o que entra no arquivo.</div>'+
    '<label '+lb+'><input type="checkbox" id="xa" checked '+st+'>Cadastro de atletas</label>'+
    '<label '+lb+'><input type="checkbox" id="xp" checked '+st+'>Pagamentos lançados</label>'+
+   '<label '+lb+'><input type="checkbox" id="xd" checked '+st+'>Despesas</label>'+
    '<label '+lb+'><input type="checkbox" id="xr" checked '+st+'>Resumo do mês ('+mes+')</label>'+
-   '<label>Pagamentos de quais meses?</label><select id="xs"><option value="mes">Só '+mes+'</option><option value="all">Todos os meses</option></select>'+
+   '<label>Pagamentos e despesas de quais meses?</label><select id="xs"><option value="mes">Só '+mes+'</option><option value="all">Todos os meses</option></select>'+
    '<div id="xerr" style="color:var(--bad);font-size:13px;margin-top:10px"></div>'+
    '<div class="btns"><button class="btn" style="flex:1" onclick="doExport()">Exportar .xlsx</button><button class="btn sec" onclick="closeSheet()">Cancelar</button></div>');
 }
 function xerr(m){ var e=document.getElementById("xerr"); if(e) e.textContent=m; else toast(m); }
 function doExport(){
-  var a=ck("xa"), p=ck("xp"), r=ck("xr"), all=document.getElementById("xs").value==="all";
-  if(!a&&!p&&!r){ xerr("Marque ao menos um item."); return; }
+  var a=ck("xa"), p=ck("xp"), d=ck("xd"), r=ck("xr"), all=document.getElementById("xs").value==="all";
+  if(!a&&!p&&!d&&!r){ xerr("Marque ao menos um item."); return; }
   if(typeof XLSX==="undefined"){ xerr("A biblioteca de Excel não carregou. Confira a internet e reabra a página."); return; }
   var buf;
   try{
@@ -356,8 +416,13 @@ function doExport(){
       var wp=XLSX.utils.aoa_to_sheet(P); wp["!cols"]=[{wch:30},{wch:10},{wch:12},{wch:10},{wch:20},{wch:30}];
       XLSX.utils.book_append_sheet(wb,wp,"Pagamentos");
     }
+    if(d){
+      var D=[["Descrição","Valor","Data","Mês/Ano","Categoria"]].concat(S.desp.filter(function(x){return all||x.m===mes}).map(function(x){return [x.t,x.v,x.d,x.m,x.c]}));
+      var wd=XLSX.utils.aoa_to_sheet(D); wd["!cols"]=[{wch:34},{wch:10},{wch:12},{wch:10},{wch:20}];
+      XLSX.utils.book_append_sheet(wb,wd,"Despesas");
+    }
     if(r){
-      var R=[["RESUMO DE PAGAMENTOS | "+mes],[],["Total de atletas",s.n],["Pagaram",s.pg.length],["Devem",s.dv.length],["Total arrecadado",s.total],[],["Forma","Valor"]]
+      var R=[["RESUMO DE PAGAMENTOS | "+mes],[],["Total de atletas",s.n],["Pagaram",s.pg.length],["Devem",s.dv.length],["Total arrecadado",s.total],["Despesas do mês",totDesp(mes)],["Saldo do mês",s.total-totDesp(mes)],["Saldo inicial",Number(S.ini)||0],["Saldo acumulado",saldoAcum()],[],["Forma","Valor"]]
         .concat(FORMAS.map(function(f){return [f,s.tot[f]]})).concat([[],["PAGARAM","Valor pago"]])
         .concat(s.pg.map(function(x){return [x.a.n,x.v]})).concat([[],["DEVEM","Situação"]]).concat(s.dv.map(function(x){return [x.n,"Pendente"]}));
       var wr=XLSX.utils.aoa_to_sheet(R); wr["!cols"]=[{wch:32},{wch:14}];
@@ -365,7 +430,7 @@ function doExport(){
     }
     buf=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   }catch(e){ xerr("Erro ao montar a planilha: "+(e&&e.message||e)); return; }
-  var fn=(a&&p&&r&&all)?"Controle Financeiro Vila Avai.xlsx":"Vila Avai "+mes.replace("/","-")+".xlsx";
+  var fn=(a&&p&&d&&r&&all)?"Controle Financeiro Vila Avai.xlsx":"Vila Avai "+mes.replace("/","-")+".xlsx";
   var dl=(window.claude&&window.claude.use)?window.claude.use("downloads"):Promise.resolve(null);
   dl.then(function(d){
     if(!d){ baixaLocal(buf,fn); return; }
@@ -422,7 +487,7 @@ function syncBase(manual){
 }
 document.addEventListener("visibilitychange",function(){ if(!document.hidden&&!document.getElementById("sheet").classList.contains("on")) syncBase(false); });
 
-mes=mesAtual(); load(); render(); syncBase(false);
+mes=mesAtual(); load(); S.desp=S.desp||[]; S.ini=Number(S.ini)||0; render(); syncBase(false);
 </script>
 </body>
 </html>
