@@ -247,7 +247,7 @@ function saldoAcum(){
 function linhaV(l,v,c,b){ return '<div style="display:flex;justify-content:space-between;padding:6px 0'+(b?';border-top:1px solid var(--bd);margin-top:4px;padding-top:10px':'')+'"><span>'+l+'</span><b class="'+c+'">'+brlS(v)+'</b></div>'; }
 function caixaCard(){
   var e=totEnt(mes), d=totDesp(mes), sm=e-d, sa=saldoAcum();
-  return '<div class="card"><h3>Caixa de '+mes+'</h3>'+linhaV("Arrecadado",e,"ok")+linhaV("Despesas",-d,d>0?"bad":"")+linhaV("Saldo do mês",sm,sm>=0?"ok":"bad")+(S.ini?linhaV("Saldo inicial (antes do app)",S.ini,S.ini>=0?"ok":"bad"):"")+linhaV("Saldo acumulado",sa,sa>=0?"ok":"bad",true)+'</div>';
+  return '<div class="card"><h3>Caixa de '+mes+'</h3>'+linhaV("Arrecadado",e,"ok")+linhaV("Despesas",-d,d>0?"bad":"")+linhaV("Saldo do mês",sm,sm>=0?"ok":"bad")+(S.ini?linhaV("Saldo inicial",S.ini,S.ini>=0?"ok":"bad"):"")+linhaV("Saldo acumulado",sa,sa>=0?"ok":"bad",true)+'</div>';
 }
 function vDesp(){
   var d=totDesp(mes), sa=saldoAcum();
