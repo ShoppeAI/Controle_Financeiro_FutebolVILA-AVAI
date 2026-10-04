@@ -440,22 +440,18 @@ function doExport(){
 
 
 // ---- base de atletas (atletas.csv no repositório) ---------------------
-var BASEFILE="atletas.csv", FLD=["n","i","p","r","w"];
-function parseCSV(txt){
-  txt=String(txt||"").replace(/^\uFEFF/,"");
-  var lines=txt.split(/\r?\n/).filter(function(l){return l.trim()});
-  if(!lines.length) return [];
-  var d=(lines[0].split(";").length>=lines[0].split(",").length)?";":",";
-  function cells(l){ var o=[],c="",q=false; for(var k=0;k<l.length;k++){ var ch=l[k];
-    if(q){ if(ch==='"'){ if(l[k+1]==='"'){c+='"';k++;} else q=false; } else c+=ch; }
-    else if(ch==='"') q=true; else if(ch===d){ o.push(c); c=""; } else c+=ch; }
-    o.push(c); return o.map(function(x){return x.trim()}); }
-  var h=cells(lines[0]).map(function(x){return x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")});
+var BASEFILE="atletas.xlsx", FLD=["n","i","p","r","w"];
+function parseRows(rows){
+  function nz(x){ return String(x==null?"":x).trim(); }
+  function nm(x){ return nz(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+  var hi=-1;
+  for(var r=0;r<rows.length&&hi<0;r++){ for(var c=0;c<rows[r].length;c++){ var v=nm(rows[r][c]); if(v==="nome"||v==="atleta"||v==="name"){ hi=r; break; } } }
+  if(hi<0) return [];
+  var h=rows[hi].map(nm);
   function ix(ns){ for(var k=0;k<h.length;k++) if(ns.indexOf(h[k])>=0) return k; return -1; }
   var iN=ix(["nome","atleta","name"]), iI=ix(["idade"]), iP=ix(["posicao"]), iW=ix(["whatsapp","telefone","celular","fone"]), iR=ix(["rg"]);
-  if(iN<0) return [];
-  return lines.slice(1).map(cells).filter(function(c){return c[iN]}).map(function(c){
-    return {n:c[iN],i:iI>=0?c[iI]:"",p:iP>=0?c[iP]:"",w:iW>=0?c[iW]:"",r:iR>=0?c[iR]:""}; });
+  return rows.slice(hi+1).filter(function(row){return nz(row[iN])}).map(function(row){
+    return {n:nz(row[iN]),i:iI>=0?nz(row[iI]):"",p:iP>=0?nz(row[iP]):"",w:iW>=0?nz(row[iW]):"",r:iR>=0?nz(row[iR]):""}; });
 }
 function applyBase(list){
   var bmap={}, add=0, rem=0;
@@ -478,8 +474,9 @@ function applyBase(list){
   return {add:add,rem:rem};
 }
 function syncBase(manual){
-  return fetch(BASEFILE+"?v="+Date.now(),{cache:"no-store"}).then(function(r){ if(!r.ok) throw new Error("arquivo não encontrado ("+r.status+")"); return r.text(); }).then(function(txt){
-    var list=parseCSV(txt); if(!list.length) throw new Error("arquivo vazio ou sem a coluna nome");
+  return fetch(BASEFILE+"?v="+Date.now(),{cache:"no-store"}).then(function(r){ if(!r.ok) throw new Error("arquivo não encontrado ("+r.status+")"); return r.arrayBuffer(); }).then(function(buf){
+    var wb=XLSX.read(buf,{type:"array"}), sn=wb.SheetNames.filter(function(s){return /atletas/i.test(s)})[0]||wb.SheetNames[0];
+    var list=parseRows(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:""})); if(!list.length) throw new Error("arquivo vazio ou sem a coluna Nome");
     var res=applyBase(list), d=new Date();
     S.baseAt=pad(d.getDate())+"/"+pad(d.getMonth()+1)+" "+pad(d.getHours())+":"+pad(d.getMinutes()); S.baseN=list.length; save(); render();
     if(manual) toast(res.add||res.rem?"Base atualizada: +"+res.add+" / -"+res.rem:"Base já está atualizada");
